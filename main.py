@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands, tasks
 #accessing the .env file
 import os
-#data handling --> reading csv files
+#data handling --> reading sheet files
 import pandas as pd
 #figuring out which time slot got the most votes
 from collections import Counter
@@ -12,11 +12,13 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 #accessing the pickle file generated for google authentication
 import pickle
-#connecting to google API
+#connecting to google Calendar API
 from googleapiclient.discovery import build
+#connecting to Google Sheets API
+import gspread
+from google.oauth2.service_account import Credentials
 #loading secrets from the .env file
 from dotenv import load_dotenv
-
 
 #load_dotenv is basically temporarily making the .env file available (readable) as an environment variable
 load_dotenv()
@@ -30,13 +32,12 @@ CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 #calling the intents class from discord.py (creating an object) --> calling the default method
 # === DISCORD BOT SETUP ===
 intents = discord.Intents.default() #creating an object
-intents.message_content = True  #turing on permission to read message content
+intents.message_content = True  #turning on permission to read message content
 intents.reactions = True        #turning on permission to track reactions
 
 #passing the intents object to the bot we created using the following class (bot is the object of class Bot)
 #prefix ! will be used to call the bot, and the intents object will set the permission for the bot in that channel.
 bot = commands.Bot(command_prefix="!", intents=intents)    
-
 
 # === GOOGLE CALENDAR SETUP ===
 def get_calendar_service():
@@ -45,8 +46,17 @@ def get_calendar_service():
         creds = pickle.load(token)          
     return build("calendar", "v3", credentials=creds)      #calling the google build function and connecting to the calendar api !!
 
+# === GOOGLE SHEETS SETUP ===
+# Google Sheets connection setup (using service account)
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_file("sheets_credentials.json", scopes=scope)
+client = gspread.authorize(creds)
+spreadsheet = client.open("availability_submissions")    # opening the spreadsheet
+worksheet = spreadsheet.sheet1    #selecting the first sheet/tab
+
+# === SCHEDULE GOOGLE MEET FUNCTION ===
 def schedule_google_meet(best_time, attendee_names, email_map):
-    """This function will allow to scheduling a google meet"""
+    """This function will allow scheduling a google meet"""
 
     #Timing Logic --> can change based on the requirements of the bot 
     #splitting the input time into day and hour
@@ -54,7 +64,7 @@ def schedule_google_meet(best_time, attendee_names, email_map):
     hour = int(hour_str.split(":")[0])  #removing ':' from the hour
     weekday_map = {"Saturday": 5, "Sunday": 6}
 
-    today = datetime.today()        #finding todays date
+    today = datetime.today()        #finding today's date
     days_ahead = (weekday_map[day_str] - today.weekday()) % 7     
     meeting_date = today + timedelta(days=days_ahead)
     start_datetime = meeting_date.replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -62,11 +72,11 @@ def schedule_google_meet(best_time, attendee_names, email_map):
     #creating a dictionary with key :'email' and value as the actual email.
     attendee_emails = [{"email": email_map[name]} for name in attendee_names if name in email_map]
 
-    #calling the calendar service function to establish connection to the google calender sever.
+    #calling the calendar service function to establish connection to the google calendar server.
     service = get_calendar_service()
     #standard library format to write event details. 
     event = {
-        "summary": "Automeeting Schedular Testing",
+        "summary": "Auto Meeting Scheduler Test",
         "start": {
             "dateTime": start_datetime.isoformat(),
             "timeZone": "Europe/London",
@@ -111,7 +121,7 @@ async def send_gui_link():
         channel = bot.get_channel(CHANNEL_ID)
         await channel.send(               #using the await function to wait for the previous task to get finished before performing this.
             "**🗓️ Please fill out your availability for this weekend!**\n"
-            "👉 Submit here: http://192.168.0.36:8501\n"
+            "👉 Submit here: https://himanshukriplani13-discord-schedular-bo-availability-gui-zkfzdn.streamlit.app\n"
             "⏳ Deadline: **Saturday 11AM**!"
         )
 
@@ -119,27 +129,30 @@ async def send_gui_link():
 @tasks.loop(minutes=1)          #will run the following asynchronous function every minute ( background tasks)
 async def auto_schedule_meeting():
     now = datetime.now(timezone.utc) #getting the current date and time
-    if now.weekday() == 5 and now.hour == 10 and now.minute == 0:  # checking if saturday 11am has been achieved
+    if now.weekday() == 5 and now.hour == 10 and now.minute == 0:  # checking if Saturday 11am has been achieved
         channel = bot.get_channel(CHANNEL_ID)         #connecting to the discord channel where we want to send the message.
         try:
-            df = pd.read_csv("availability_submissions.csv")     #reads the recorded availabilities
+            data = worksheet.get_all_records()        #reading the google sheet
+            df = pd.DataFrame(data)                   #loading the data into pandas dataframe
             df.columns = df.columns.str.strip().str.lower()      #cleans the data
 
             #fault finding in the code !!!
             if "time" not in df.columns or "name" not in df.columns:
-                await channel.send("❌ CSV missing `name` or `time` column.")
+                await channel.send("❌ Sheet missing `name` or `time` column.")
                 return
 
             best_time = df["time"].value_counts().idxmax()   #using the pandas library to find out the maximum value of all
-            attendees = df[df["time"] == best_time]["name"].unique()      #only unique names will be considred
+            attendees = df[df["time"] == best_time]["name"].unique()      #only unique names will be considered
 
             # 🛠️ Replace with your actual attendees + emails
             email_map = {
                 "Himanshu": "hkriplani1@sheffield.ac.uk",
                 "Omar" : "omelzi1@sheffield.ac.uk"
             }
+
             #calling the google scheduling function and storing the returned values in the variables
             meeting_time, meet_link, invited = schedule_google_meet(best_time, attendees, email_map)
+
             #waiting for all these actions to perform before sending the meeting details on the discord channel
             await channel.send(
                 f"📅 **Meeting Scheduled!**\n"
@@ -148,8 +161,9 @@ async def auto_schedule_meeting():
                 f"🔗 Google Meet: {meet_link}"
             )
 
-            # BONUS: Clear CSV after scheduling
-            open("availability_submissions.csv", "w").close()     #cleaning the file so that it can be used for the next meeting scheduling
+            # BONUS: Clear Sheet after scheduling
+            worksheet.clear()
+            worksheet.append_row(["name", "time"])
             await channel.send("🧹 Cleared availability submissions for next week!")
 
         except Exception as e:
@@ -162,7 +176,6 @@ async def schedule(ctx):
     await ctx.send("📦 Running auto scheduler manually...")
     await auto_schedule_meeting()
 
-
 @bot.command()     #decorator function which will only be called on command, for manual testing of sending the form
 async def sendform(ctx):
     await ctx.send(
@@ -170,7 +183,6 @@ async def sendform(ctx):
         "👉 Submit here: https://himanshukriplani13-discord-schedular-bo-availability-gui-zkfzdn.streamlit.app\n"
         "⏳ Deadline: **Saturday 11AM**!"
     )
-
 
 # === RUN THE BOT ===
 bot.run(TOKEN)

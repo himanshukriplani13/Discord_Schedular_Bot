@@ -1,12 +1,24 @@
-import streamlit as st  #for web applications
-import pandas as pd    #classic
-from datetime import datetime, timedelta   #importing date-time
+import streamlit as st
+import pandas as pd
+from datetime import datetime, timedelta
+import gspread
+from google.oauth2.service_account import Credentials
 
-#configuration for the page with title --> on the tab & page layout --> 'wide' for using the entire screen
+# Page configuration
 st.set_page_config(page_title="Team Availability", layout="wide") 
 
-st.title("🗓️ Select Your Availability")     #titile of the page
-user_name = st.text_input("Enter your name:")      #taking user input
+# Google Sheets setup
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_file("sheets_credentials.json", scopes=scope)
+client = gspread.authorize(creds)
+
+# Open your spreadsheet
+spreadsheet = client.open("availability_submissions")  # Google Sheet name
+worksheet = spreadsheet.sheet1  # First sheet/tab
+
+# Streamlit UI
+st.title("🗓️ Select Your Availability")
+user_name = st.text_input("Enter your name:")
 
 days = ["Saturday", "Sunday"]
 hours = list(range(8, 21))  # 8AM to 8PM
@@ -14,31 +26,28 @@ hours = list(range(8, 21))  # 8AM to 8PM
 availability = {}
 
 for day in days:
-    st.subheader(day)   #creating a sub-heading
-    cols = st.columns(len(hours))   #creating columns of the length(number of columns == number of hrs -->common sense !!)
+    st.subheader(day)
+    cols = st.columns(len(hours))
     for i, hour in enumerate(hours):
-        time_str = f"{hour:02d}:00"  # Ensures 08:00, 09:00, 10:00 etc
+        time_str = f"{hour:02d}:00"
         key = f"{user_name}_{day}_{hour}"
-        available = cols[i].checkbox(time_str, key=key)  #creaitng checkboxes
-        availability[f"{day} {time_str}"] = available   #available would be a bool value
+        available = cols[i].checkbox(time_str, key=key)
+        availability[f"{day} {time_str}"] = available
 
-#longer format
-#selected_times = []
-# for time, available in availability.items():
-#     if available:
-#         selected_times.append(time)
-
-if st.button("✅ Submit Availability") and user_name:     
-    selected_times = [time for time, available in availability.items() if available]     #.items() would return both key and value   
+# Submit availability
+if st.button("✅ Submit Availability") and user_name:
+    selected_times = [time for time, available in availability.items() if available]
 
     if selected_times:
+        for time in selected_times:
+            worksheet.append_row([user_name, time])  # Append to Google Sheet
+        
+        st.success("✅ Your availability has been recorded in Google Sheets!")
+        st.write("Your selected time slots:")
         df = pd.DataFrame({
-            "name": [user_name] * len(selected_times),   #repeating the name multiple times i.e if one person chooses multiple times right they need to be accommodated
+            "name": [user_name] * len(selected_times),
             "time": selected_times
         })
-        df.to_csv("availability_submissions.csv", mode='a', header=not pd.io.common.file_exists("availability_submissions.csv"), index=False)
-        st.success("✅ Your availability has been recorded!")
-        st.write("Your selected time slots:")
         st.dataframe(df)
     else:
         st.warning("⚠️ Please select at least one time slot before submitting.")
