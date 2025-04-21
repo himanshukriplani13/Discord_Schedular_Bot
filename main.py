@@ -20,6 +20,8 @@ from google.oauth2.service_account import Credentials
 #loading secrets from the .env file
 from dotenv import load_dotenv
 
+import json
+
 #load_dotenv is basically temporarily making the .env file available (readable) as an environment variable
 load_dotenv()
 
@@ -40,19 +42,25 @@ intents.reactions = True        #turning on permission to track reactions
 bot = commands.Bot(command_prefix="!", intents=intents)    
 
 # === GOOGLE CALENDAR SETUP ===
-def get_calendar_service():
-    """This function makes a secure connection to the google calendar api by reading the credentials from the pickle file """
-    with open("token.pickle", "rb") as token:             #opening the pickle file and storing the google credentials in the variable creds
-        creds = pickle.load(token)          
-    return build("calendar", "v3", credentials=creds)      #calling the google build function and connecting to the calendar api !!
-
-# === GOOGLE SHEETS SETUP ===
-# Google Sheets connection setup (using service account)
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_file("sheets_credentials.json", scopes=scope)
+
+#  TEMPORARY FOR LOCAL TESTING ONLY
+with open("sheets_credentials.json", "r") as f:
+    sheets_creds_json = f.read()
+
+# Later this line will be used for production
+# sheets_creds_json = os.getenv("SHEETS_CREDENTIALS_JSON")
+
+# Parse the string into a dictionary
+sheets_creds_dict = json.loads(sheets_creds_json)
+
+# Authorize with Google Sheets
+creds = Credentials.from_service_account_info(sheets_creds_dict, scopes=scope)
 client = gspread.authorize(creds)
-spreadsheet = client.open("availability_submissions")    # opening the spreadsheet
-worksheet = spreadsheet.sheet1    #selecting the first sheet/tab
+
+# Open the spreadsheet
+spreadsheet = client.open("availability_submissions")
+worksheet = spreadsheet.sheet1
 
 # === SCHEDULE GOOGLE MEET FUNCTION ===
 def schedule_google_meet(best_time, attendee_names, email_map):

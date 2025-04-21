@@ -3,22 +3,25 @@ import pandas as pd
 from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import os
+import json
+
 
 # Page configuration
 st.set_page_config(page_title="Team Availability", layout="wide") 
 
 # Google Sheets setup
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_file("sheets_credentials.json", scopes=scope)
+sheets_creds_json = os.getenv("SHEETS_CREDENTIALS_JSON")
+sheets_creds_dict = json.loads(sheets_creds_json)
+
+# Setup Google Sheets client
+creds = Credentials.from_service_account_info(sheets_creds_dict, scopes=scope)
 client = gspread.authorize(creds)
 
 # Open your spreadsheet
-spreadsheet = client.open("availability_submissions")  # Google Sheet name
-worksheet = spreadsheet.sheet1  # First sheet/tab
-
-# Streamlit UI
-st.title("🗓️ Select Your Availability")
-user_name = st.text_input("Enter your name:")
+spreadsheet = client.open("availability_submissions")
+worksheet = spreadsheet.sheet1
 
 days = ["Saturday", "Sunday"]
 hours = list(range(8, 21))  # 8AM to 8PM
