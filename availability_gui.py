@@ -26,6 +26,8 @@ worksheet = spreadsheet.sheet1
 days = ["Saturday", "Sunday"]
 hours = list(range(8, 21))  # 8AM to 8PM
 
+user_name = st.text_input("Enter your name:")
+
 availability = {}
 
 for day in days:
