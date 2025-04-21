@@ -45,11 +45,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 #  TEMPORARY FOR LOCAL TESTING ONLY
-with open("sheets_credentials.json", "r") as f:
-    sheets_creds_json = f.read()
+# with open("sheets_credentials.json", "r") as f:
+#     sheets_creds_json = f.read()
 
 # Later this line will be used for production
-# sheets_creds_json = os.getenv("SHEETS_CREDENTIALS_JSON")
+sheets_creds_json = os.getenv("SHEETS_CREDENTIALS_JSON")
 
 # Parse the string into a dictionary
 sheets_creds_dict = json.loads(sheets_creds_json)
