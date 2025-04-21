@@ -155,7 +155,6 @@ async def auto_schedule_meeting():
             # 🛠️ Replace with your actual attendees + emails
             email_map = {
                 "Himanshu": "hkriplani1@sheffield.ac.uk",
-                "Omar" : "omelzi1@sheffield.ac.uk"
             }
 
             #calling the google scheduling function and storing the returned values in the variables
